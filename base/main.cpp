@@ -4,7 +4,7 @@
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
+    // QCoreApplication a(argc, argv);
 
     /* QString 基本用法 */
 
@@ -14,7 +14,8 @@ int main(int argc, char *argv[])
     QString str2("world");
 
     // 1.2.格式化创建
-    QString str_format = QString("  %1   +   %2   +   %3  ").arg(str1,str2,"format   ");
+    // str1和str2 是QString对象，可以使用arg函数格式化，如果使用int格式化，需要使用arg().args()格式化
+    QString str_format = QString("  %1   +   %2   +   %3  ").arg(str1,str2,"format   "); 
 
     qDebug() << "str1:" << str1;
     qDebug() << "str2:" << str2;
@@ -159,5 +160,6 @@ int main(int argc, char *argv[])
     str6.replace(" ", "+");
     qDebug() << "str6:" << str6;
 
-    return a.exec();
+    return 0;
+    // return a.exec();
 }
