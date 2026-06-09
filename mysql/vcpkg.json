@@ -1,0 +1,15 @@
+{
+  "name": "mysql",
+  "version": "1.0.0",
+  "description": "Project using official MySQL Connector/C++ and OpenCV with contrib/nonfree",
+  "dependencies": [
+    {
+      "name": "opencv",
+      "features": ["contrib", "nonfree"]
+    },
+    "mysql-connector-cpp",
+    "eigen3",
+    "yaml-cpp",
+    "spdlog"
+  ]
+}

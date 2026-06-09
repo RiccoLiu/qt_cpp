@@ -23,12 +23,20 @@ LOGGER_EXPORT void logger_log(int level, const char* format, ...);
 
 }
 
-#define LOGT(...) logger_log(LOG_LEVEL_TRACE, __VA_ARGS__)
-#define LOGD(...) logger_log(LOG_LEVEL_DEBUG, __VA_ARGS__)
-#define LOGI(...) logger_log(LOG_LEVEL_INFO,  __VA_ARGS__)
-#define LOGW(...) logger_log(LOG_LEVEL_WARNING, __VA_ARGS__)
-#define LOGE(...) logger_log(LOG_LEVEL_ERROR, __VA_ARGS__)
-#define LOGF(...) logger_log(LOG_LEVEL_FATAL, __VA_ARGS__)
+// #define LOGT(...) logger_log(LOG_LEVEL_TRACE, __VA_ARGS__)
+// #define LOGD(...) logger_log(LOG_LEVEL_DEBUG, __VA_ARGS__)
+// #define LOGI(...) logger_log(LOG_LEVEL_INFO,  __VA_ARGS__)
+// #define LOGW(...) logger_log(LOG_LEVEL_WARNING, __VA_ARGS__)
+// #define LOGE(...) logger_log(LOG_LEVEL_ERROR, __VA_ARGS__)
+// #define LOGF(...) logger_log(LOG_LEVEL_FATAL, __VA_ARGS__)
+
+
+#define LOGT(...)
+#define LOGD(...)
+#define LOGI(...)
+#define LOGW(...)
+#define LOGE(...)
+#define LOGF(...)
 
 
 #endif // LOGGER_H

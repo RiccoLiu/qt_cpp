@@ -2,7 +2,8 @@
 #define USERINFO_DLG_H
 
 #include <QDialog>
-#include "database.h"
+#include <QKeyEvent>
+#include "database2.h"
 
 namespace Ui {
 class UserInfoDlg;
@@ -16,7 +17,13 @@ public:
     explicit UserInfoDlg(QWidget *parent = nullptr);
     ~UserInfoDlg();
 
-    UserInfo GetUserInfo() const;
+    User GetUserInfo() const;
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+
+private slots:
+    void on_photo_finished();
 
 private:
     Ui::UserInfoDlg *ui;

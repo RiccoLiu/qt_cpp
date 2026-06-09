@@ -3,6 +3,10 @@
 
 #include <QMainWindow>
 #include "usermanager_window.h"
+#include "management_window.h"
+
+#include "videodecoder.h"
+#include "facedetector.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -19,11 +23,24 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_databaseManager_clicked();
+    void on_manerge_triggered();
+
+    // void onNewFrame(const cv::Mat& frame);
+    void onDetectionResult(const cv::Mat& result);
+    void onPipelineFinished();
+
+    void on_open_triggered();
 
 private:
     Ui::MainWindow *ui;
+    QThread* decoderThread;
+    QThread* detectorThread;
+    VideoDecoder* decoder;
+    FaceDetector* detector;
 
-    UserManagerWindow* userManagerWindow;
+    QLabel* displayer;
+    QString filePath;
+
+    ManagementWindow* managementWindow;
 };
 #endif // MAINWINDOW_H

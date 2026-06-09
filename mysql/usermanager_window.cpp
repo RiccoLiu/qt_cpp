@@ -9,10 +9,11 @@
 #include "ui_usermanager_window.h"
 #include "userinfo_dlg.h"
 
+#include "db_utils.h"
+
 UserManagerWindow::UserManagerWindow(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::UserManagerWindow)
-    , db(CreateDatabase())
     , model(new QStandardItemModel(this))
     , view(new QTableView(this))
     , tableRowCount(5)
@@ -21,7 +22,17 @@ UserManagerWindow::UserManagerWindow(QWidget *parent)
 
     setWindowTitle("用户管理窗口");
 
-    db->Init("users.db");
+    MySqlConfig mysql_config;
+    mysql_config.host = "localhost";
+    mysql_config.port = 33060;
+    mysql_config.username = "lc";
+    mysql_config.passwd = "123456lc";
+    mysql_config.schema = "lc_test";
+
+    SqliteConfig sqlite_config;
+    sqlite_config.db_file = "user.db";
+
+    db = DatabaseFactory::Create(sqlite_config);
 
     TableInit();
     LayoutInit();
@@ -30,7 +41,6 @@ UserManagerWindow::UserManagerWindow(QWidget *parent)
 UserManagerWindow::~UserManagerWindow()
 {
     delete ui;
-    DestroyDatabase(db);
 }
 
 int UserManagerWindow::UpdateUserCount() {
@@ -46,9 +56,8 @@ int UserManagerWindow::TableInit() {
     model->clear();
 
     QStringList h_header;
-    for (const std::string& field : db->GetTableField()) {
-        h_header << QString::fromStdString(field);
-    }
+    h_header << "id" << "name" << "gender" << "age" << "image_path" << "image";
+
     model->setHorizontalHeaderLabels(h_header);
 
     QStringList v_header;
@@ -206,16 +215,20 @@ int UserManagerWindow::LayoutInit() {
 }
 
 void UserManagerWindow::on_page_changed(int page) {
-    int row = 0;
-    for (const UserInfo& user : db->QueryUser(tableRowCount, currnetPage->value())) {
-        model->setItem(row, 0, new QStandardItem(QString::fromStdString(user.name)));
-        model->setItem(row, 1, new QStandardItem(QString::fromStdString(user.gender)));
-        model->setItem(row, 2, new QStandardItem(QString::number(user.age)));
-        model->setItem(row, 3, new QStandardItem(QString::fromStdString(user.address)));
 
-        QString keypointStr = QString::number(user.keypoint.size());
-        model->setItem(row, 4, new QStandardItem(keypointStr));
-        model->setItem(row, 5, new QStandardItem(QString::fromStdString(user.image)));
+    on_query_clicked();
+
+#if 0
+    int row = 0;
+
+    std::vector<User> users = db->QueryUser(UserCondition(), currnetPage->value() - 1, tableRowCount);
+    for (const User& user : users) {
+        model->setItem(row, 0, new QStandardItem(QString::number(user.id)));
+        model->setItem(row, 1, new QStandardItem(QString::fromStdString(user.name)));
+        model->setItem(row, 2, new QStandardItem(QString::fromStdString(user.gender == Gender::Male ? "Male" : "Female")));
+        model->setItem(row, 3, new QStandardItem(QString::number(user.age)));
+        model->setItem(row, 4, new QStandardItem(QString::fromStdString(user.image_path)));
+        model->setItem(row, 5, new QStandardItem(QString::fromStdString("无图片")));
 
         for (int col = 0; col < model->columnCount(); col++) {
             // 文本显示单元格居中
@@ -234,21 +247,22 @@ void UserManagerWindow::on_page_changed(int page) {
             model->setItem(row, col, new QStandardItem());
         }
     }
+#endif
 }
 
 void UserManagerWindow::on_query_clicked() {
     // model->removeRows(0, model->rowCount());
 
     int row = 0;
-    for (const UserInfo& user : db->QueryUser(tableRowCount, currnetPage->value())) {
-        model->setItem(row, 0, new QStandardItem(QString::fromStdString(user.name)));
-        model->setItem(row, 1, new QStandardItem(QString::fromStdString(user.gender)));
-        model->setItem(row, 2, new QStandardItem(QString::number(user.age)));
-        model->setItem(row, 3, new QStandardItem(QString::fromStdString(user.address)));
+    std::vector<User> users = db->QueryUser(UserCondition(), currnetPage->value() - 1, tableRowCount);
 
-        QString keypointStr = QString::number(user.keypoint.size());
-        model->setItem(row, 4, new QStandardItem(keypointStr));
-        model->setItem(row, 5, new QStandardItem(QString::fromStdString(user.image)));
+    for (const User& user : users) {
+        model->setItem(row, 0, new QStandardItem(QString::number(user.id)));
+        model->setItem(row, 1, new QStandardItem(QString::fromStdString(user.name)));
+        model->setItem(row, 2, new QStandardItem(QString::fromStdString(user.gender == Gender::Male ? "Male" : "Female")));
+        model->setItem(row, 3, new QStandardItem(QString::number(user.age)));
+        model->setItem(row, 4, new QStandardItem(QString::fromStdString(user.image_path)));
+        model->setItem(row, 5, new QStandardItem(QString::fromStdString("无图片")));
 
         for (int col = 0; col < model->columnCount(); col++) {
             // 文本显示单元格居中
@@ -276,15 +290,10 @@ void UserManagerWindow::on_delete_clicked() {
     }
     int row = index.row();
 
-    UserInfo user = {
-        model->item(row, 0)->text().toStdString(),
-        model->item(row, 1)->text().toStdString(),
-        model->item(row, 2)->text().toInt(),
-        model->item(row, 3)->text().toStdString(),
-        std::vector<double>(),
-        model->item(row, 5)->text().toStdString()
-    };
-    db->DeleteUser(user);
+    UserCondition condition;
+    condition[UserKey::Id] = model->item(row, 0)->text().toInt();
+
+    db->DeleteUser(condition);
     // model->removeRow(row);
 
     on_query_clicked();
@@ -292,27 +301,31 @@ void UserManagerWindow::on_delete_clicked() {
 }
 
 void UserManagerWindow::on_update_clicked() {
+
     QModelIndex index = view->currentIndex();
     if (!index.isValid()) {
         return;
     }
     int row = index.row();
-    UserInfo where_user = {
-        model->item(row, 0)->text().toStdString(),
-        model->item(row, 1)->text().toStdString(),
-        model->item(row, 2)->text().toInt(),
-        model->item(row, 3)->text().toStdString(),
-        std::vector<double>(),
-        model->item(row, 5)->text().toStdString()
-    };
+    // UserInfo where_user = {
+    //     model->item(row, 0)->text().toStdString(),
+    //     model->item(row, 1)->text().toStdString(),
+    //     model->item(row, 2)->text().toInt(),
+    //     model->item(row, 3)->text().toStdString(),
+    //     std::vector<double>(),
+    //     model->item(row, 5)->text().toStdString()
+    // };
+
+    UserCondition where;
+    where[UserKey::Id] = model->item(row, 0)->text().toInt();
 
     UserInfoDlg dlg(this);
     if (dlg.exec() == QDialog::Accepted) {
-        UserInfo user = dlg.GetUserInfo();
+        User user = dlg.GetUserInfo();
         if (QMessageBox::question(this, "问题",
                                   QString("确定要更新 \"%1\" 吗？").arg(user.name.c_str()))
             == QMessageBox::Yes) {
-            db->UpdateUser(where_user, user);
+            db->UpdateUser(where, ToCondition(user));
             on_query_clicked();
         }
     }
@@ -321,7 +334,7 @@ void UserManagerWindow::on_update_clicked() {
 void UserManagerWindow::on_insert_clicked() {
     UserInfoDlg dlg(this);
     if (dlg.exec() == QDialog::Accepted) {
-        UserInfo user = dlg.GetUserInfo();
+        User user = dlg.GetUserInfo();
         if (QMessageBox::question(this, "问题",
                                   QString("确定要添加 \"%1\" 吗？").arg(user.name.c_str()))
                 == QMessageBox::Yes) {

@@ -8,7 +8,7 @@
 #include <QLabel>
 #include <QSpinBox>
 
-#include "database.h"
+#include "database2.h"
 
 namespace Ui {
 class UserManagerWindow;
@@ -35,7 +35,8 @@ private slots:
 
 private:
     Ui::UserManagerWindow *ui;
-    Database* db;
+
+    std::unique_ptr<Database2> db;
 
     QStandardItemModel* model;
     QTableView* view;

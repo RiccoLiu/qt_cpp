@@ -1,0 +1,40 @@
+# pipeline profile for perception
+name : perception pipeline
+version : '0.1'
+Nodes :
+- #node 1
+  node : VideoDecoder
+  profile :
+   thread : video_decoder_thread
+   Sources :
+   - OpenCVFrame
+   Sinks :
+   - video_sink
+   private :
+    file : E:\LC\work\project\qt_cpp\mysql\data\trailer.mp4
+    fps : 30
+- #node 2
+  node : VideoDisplay
+  instance : display
+  profile :
+   thread : video_display_thread
+   Sources :
+   - video_display_source
+   Sinks :
+   - displayer
+   private :
+    fps : 25
+    comment : nothing
+    WinName : OpenCV Window
+    WinSize : 0.25
+Edges :
+- #edge 5
+  from :
+  - VideoDecoder
+  - OpenCVFrame
+  to :
+  - VideoDisplay::display
+  - displayer
+
+Startups :
+- VideoDecoder

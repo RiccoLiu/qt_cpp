@@ -1,23 +1,20 @@
 #include <iostream>
 #include <vector>
 
-#include <sqlite3.h>
+#include <logger2.h>
+#include <sqlite3.h>            // sqlite3 头文件
+#include <Eigen/Core>           // Eigen
+#include <yaml-cpp/yaml.h>
+#include <mysqlx/xdevapi.h>     // mysql connector 头文件
+#include <opencv2/opencv.hpp>   // opencv 头文件
 
-struct Student {
-    std::string name;
-    int age;
-    std::string photo;
-};
+int sqlite3_test() {
+    struct Student {
+        std::string name;
+        int age;
+        std::string photo;
+    };
 
-
-int AddColumn() {
-
-    return 0;
-}
-
-int main() {
-    std::cout << "test::main::Hello World" << std::endl;
-#if 1
     std::string db_file_name = "school.db";
     std::string table_name = "student";
 
@@ -118,132 +115,166 @@ int main() {
                id, name, age, keypoint);
     }
 
-
-
     // 释放查询语句的资源
     sqlite3_finalize(stmt);
     stmt = NULL;
 
-
     sqlite3_close(db);
     db = NULL;
-#endif
+
     return 0;
 }
 
-#if 0
+int mysql_connector_test() {
+    struct Student {
+        std::string name;
+        int age;
+        std::string photo;
+    };
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sqlite3.h>
+    std::vector<Student> students = {
+        {"lc", 33, "/home/lc.png"},
+        {"bry", 32, "/home/bry.png"},
+        {"lsy", 3, "/home/lsy.png"}
+    };
 
-// 辅助函数：检查 SQLite 返回码并打印错误
-static void check_rc(sqlite3* db, int rc, const char* msg) {
-    if (rc != SQLITE_OK && rc != SQLITE_DONE && rc != SQLITE_ROW) {
-        fprintf(stderr, "Error (%s): %s\n", msg, sqlite3_errmsg(db));
-        exit(1);
+
+    try {
+        // 1. 连接服务器
+        struct SessionInfo {
+            std::string host;
+            int port;
+
+            std::string user;
+            std::string passwd;
+            std::string database;
+
+            std::string get_uri() const {
+                return std::string("mysqlx://").append(user).append(":").append(passwd)
+                    .append("@").append(host).append(":").append(std::to_string(port))
+                    .append("/").append(database);
+            }
+        };
+
+        SessionInfo info = {"127.0.0.1", 33060, "lc", "123456lc", "lc_test" };
+        LOGI("connect MySQL server: %s", info.get_uri().c_str());
+
+        // mysqlx::Session sess(info.host, info.port, info.user, info.passwd, info.database);
+        mysqlx::Session sess(info.get_uri());
+
+        // 2. 查看 MySQL 版本
+        mysqlx::SqlResult res = sess.sql("SELECT VERSION();").execute();
+        mysqlx::Row row = res.fetchOne();
+        if (row) {
+            LOGI("MySQL Verison: %s", row[0].get<std::string>().c_str());
+        }
+
+        // 3.创建表单
+        std::string table_name = "students";
+        sess.sql("CREATE TABLE IF NOT EXISTS " + table_name + " (id INTEGER AUTO_INCREMENT PRIMARY KEY,"
+                 "name VARCHAR(50) NOT NULL,"
+                 "age INTEGER DEFAULT 0,"
+                 "photo TEXT)")
+                 .execute();
+
+        // 4.插入表单
+        for (const auto& stu : students) {
+            sess.sql("INSERT INTO " + table_name + "(name, age, photo) VALUES (?, ?, ?)")
+                .bind(stu.name, stu.age, stu.photo)
+                .execute();
+        }
+
+        // 5.查询数据
+        res = sess.sql("SELECT id, name, age, photo FROM " + table_name + " ORDER BY id").execute();
+
+        for (const mysqlx::Row& row : res) {
+            LOGI("id: %d, name: %s, age: %d, photo: %s", row[0].get<int>(),
+                row[1].get<std::string>().c_str(),
+                row[2].get<int>(),
+                row[3].get<std::string>().c_str()
+                );
+        }
+
+        // 6. 更新数据
+        sess.sql("UPDATE " + table_name + " SET age=4 WHERE name='lsy'").execute();
+        LOGI("update lsy age to 4...");
+
+        res = sess.sql("SELECT id, name, age, photo FROM " + table_name + " ORDER BY id").execute();
+        for (const mysqlx::Row& row : res) {
+            LOGI("id: %d, name: %s, age: %d, photo: %s", row[0].get<int>(),
+                 row[1].get<std::string>().c_str(),
+                 row[2].get<int>(),
+                 row[3].get<std::string>().c_str()
+                 );
+        }
+
+        // 7. 删除所有数据
+        sess.sql("DELETE FROM " + table_name).execute();
+
+        // 8. 删除表
+        sess.sql("DROP TABLE " + table_name).execute();
+
+        sess.close();
+
+    } catch (const mysqlx::Error& e) {
+        std::cerr << "MySQL Error: " << e << std::endl;
+        return 1;
+    } catch (const std::exception& e) {
+        std::cerr << "Std Exception: " << e.what() << std::endl;
+        return 1;
     }
+    return 0;
+}
+
+int opencv_test() {
+    cv::Mat img = cv::imread("face1.jpg", cv::IMREAD_GRAYSCALE);
+    if (img.empty()) {
+        std::cerr << "img is empty.." << std::endl;
+        return -1;
+    }
+    return 0;
+}
+
+int eigen_test() {
+    Eigen::Vector3d v3d = Eigen::Vector3d::Identity();
+
+    std::cout << "v3d:" << v3d.transpose() << std::endl;
+
+    Eigen::Vector3d res = v3d * 4;
+    std::cout << "res:" << res.transpose() << std::endl;
+
+    LOGI("res:%f, %f, %f", res(0), res(1), res(2));
+    return 0;
+}
+
+int yamlcpp_test() {
+    YAML::Node node;
+
+    return 0;
 }
 
 int main() {
-    sqlite3* db = NULL;
-    sqlite3_stmt* stmt = NULL;
-    int rc;
+    LOGI("============== mysql::Main::Hello World \n\n");
 
-    printf("=== SQLite C API 生命周期示例 ===\n");
+    // LOGI("============== sqlite3_test start ====");
+    // sqlite3_test();
+    // LOGI("============== sqlite3_test end ====\n\n");
 
-    // ────────────────────────────────
-    // 1. 打开数据库连接（创建或打开文件）
-    // ────────────────────────────────
-    rc = sqlite3_open("school.db", &db);
-    check_rc(db, rc, "sqlite3_open");
-    printf("✅ 数据库已打开/创建: school.db\n");
+    // LOGI("============== mysql_connector_test start ====");
+    // mysql_connector_test();
+    // LOGI("============== mysql_connector_test end ====\n\n");
 
-    // ────────────────────────────────
-    // 2. 执行 DDL（建表）—— 使用 sqlite3_exec（简单语句）
-    // ────────────────────────────────
-    const char* create_sql =
-        "CREATE TABLE IF NOT EXISTS students ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "name TEXT NOT NULL, "
-        "age INTEGER);";
+    // LOGI("============== opencv_test start ====");
+    // opencv_test();
+    // LOGI("============== opencv_test end ====\n\n");
 
-    rc = sqlite3_exec(db, create_sql, NULL, NULL, NULL);
-    check_rc(db, rc, "CREATE TABLE");
-    printf("✅ 表 students 已创建\n");
+    // LOGI("============== eigen_test start ====");
+    // eigen_test();
+    // LOGI("============== eigen_test end ====\n\n");
 
-    // ────────────────────────────────
-    // 3. 插入数据 —— 使用预编译语句 + 参数绑定（防止 SQL 注入）
-    // ────────────────────────────────
-    const char* insert_sql = "INSERT INTO students (name, age) VALUES (?, ?);";
-
-    // 3.1 准备语句（生命周期开始）
-    rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL);
-    check_rc(db, rc, "sqlite3_prepare_v2 INSERT");
-    printf("✅ 插入语句已准备\n");
-
-    // 3.2 绑定参数并执行第一条记录
-    sqlite3_bind_text(stmt, 1, "Alice", -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 2, 22);
-    rc = sqlite3_step(stmt);
-    check_rc(db, rc, "sqlite3_step INSERT Alice");
-    printf("✅ 插入 Alice\n");
-
-    // 3.3 重置语句（清除绑定，准备下一次执行）
-    sqlite3_reset(stmt);
-
-    // 3.4 绑定第二条记录
-    sqlite3_bind_text(stmt, 1, "Bob", -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 2, 19);
-    rc = sqlite3_step(stmt);
-    check_rc(db, rc, "sqlite3_step INSERT Bob");
-    printf("✅ 插入 Bob\n");
-
-    // 3.5 重置（可选，但好习惯）
-    sqlite3_reset(stmt);
-
-    // 3.6 【关键】释放语句资源（生命周期结束）
-    sqlite3_finalize(stmt);
-    stmt = NULL; // 避免悬空指针
-    printf("✅ 插入语句已释放\n");
-
-    // ────────────────────────────────
-    // 4. 查询数据 —— 使用预编译语句 + 获取列值
-    // ────────────────────────────────
-    const char* select_sql = "SELECT name, age FROM students WHERE age > ?;";
-
-    // 4.1 准备查询语句
-    rc = sqlite3_prepare_v2(db, select_sql, -1, &stmt, NULL);
-    check_rc(db, rc, "sqlite3_prepare_v2 SELECT");
-    printf("\n✅ 查询语句已准备\n");
-
-    // 4.2 绑定查询条件
-    sqlite3_bind_int(stmt, 1, 20);
-
-    // 4.3 循环获取结果行
-    printf("🔍 查询 age > 20 的学生:\n");
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        const char* name = (const char*)sqlite3_column_text(stmt, 0);
-        int age = sqlite3_column_int(stmt, 1);
-        printf("  - %s, %d 岁\n", name ? name : "(null)", age);
-    }
-    check_rc(db, rc, "sqlite3_step SELECT loop");
-
-    // 4.4 【关键】释放查询语句
-    sqlite3_finalize(stmt);
-    stmt = NULL;
-    printf("✅ 查询语句已释放\n");
-
-    // ────────────────────────────────
-    // 5. 关闭数据库连接（最后一步！）
-    // ────────────────────────────────
-    sqlite3_close(db);
-    db = NULL;
-    printf("\n✅ 数据库连接已关闭\n");
-
-    printf("🎉 示例运行完成！查看 school.db 文件。\n");
     return 0;
 }
 
-#endif
+
+
+

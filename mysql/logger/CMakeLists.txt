@@ -14,9 +14,9 @@ add_library(logger SHARED
 )
 
 target_include_directories(logger
-  PUBLIC
-      ${CMAKE_CURRENT_SOURCE_DIR}
-  PRIVATE
-      ${CMAKE_SOURCE_DIR}/thirdparty/easylogging
+PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+PRIVATE
+    ${CMAKE_SOURCE_DIR}/thirdparty/easylogging
 )
 target_compile_definitions(logger PRIVATE LOGGER_LIBRARY)
