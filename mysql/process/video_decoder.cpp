@@ -1,54 +1,19 @@
-#include <thread>
-#include <chrono>
 #include <logger2.h>
+#include <image.h>
+#include <image_pyramid.h>
 
-#include "video_decoder.h"
 #include "camera_msg.h"
-#include "image.h"
-#include "image_pyramid.h"
+#include "video_decoder.h"
 
-VideoDecoder::VideoDecoder(const std::string& instance)
-    : PipelineNode(true, instance), file_(""), fps_(0), frame_id_(0) {}
-
-bool VideoDecoder::LoadYAML(const YAML::Node& profile_cfg)
+VideoDecoder::VideoDecoder(const std::string& instance_name)
+    : PipelineNode(true, instance_name)
 {
-    YAML::Node private_cfg  = profile_cfg["private"];
-    if (!private_cfg.IsNull()) {
-        file_ = private_cfg["file"].as<std::string>();
-        fps_ = private_cfg["fps"].as<int>();
-    }
-    return PipelineNode::LoadYAML(profile_cfg);
-}
-
-bool VideoDecoder::Initialize() {
-    cap_.open(file_);
-    if (!cap_.isOpened()) {
-        std::cerr << "Failed to open video: " << file_ << std::endl;
-        return false;
-    }
-    double w = cap_.get(cv::CAP_PROP_FRAME_WIDTH);
-    double h = cap_.get(cv::CAP_PROP_FRAME_HEIGHT);
-
-    /*
-        cv::CAP_PROP_FRAME_WIDTH	视频帧宽度（像素）
-        cv::CAP_PROP_FRAME_HEIGHT	视频帧高度（像素）
-        cv::CAP_PROP_FPS	帧率（frames per second）
-        cv::CAP_PROP_FRAME_COUNT	总帧数
-        cv::CAP_PROP_FORMAT	像素格式（如 CV_8UC3）
-    */
-
-    if (w > 0 && h > 0) {
-        width_ = static_cast<int>(w);
-        height_ = static_cast<int>(h);
-        std::cout << "Resolution: " << width_ << "x" << height_ << std::endl;
-    }
-
-    return true;
 }
 
 bool VideoDecoder::Process() {
-    if (!cap_.isOpened())
-        return false;
+    if (IsPause()) {
+        return true;
+    }
 
     std::shared_ptr<utils::ImageFrame> img = utils::ImageFrameAccquire<utils::RGBColor>(width_, height_);
 
@@ -58,6 +23,7 @@ bool VideoDecoder::Process() {
     if (cap_.read(cv_img) && !cv_img.empty()) {
         // 原始图像
         auto cam_msg = PipelineMsgPool<CameraMsg>::GetInstance().AcquireData();
+        cam_msg->SetFrameId(frame_id_);
         cam_msg->AddObject(IMAGE_FRAME_KEY, img);
 
         // 灰度图像
@@ -101,14 +67,60 @@ bool VideoDecoder::Process() {
 
         Publish(cam_msg);
 
+        frame_id_++;
         std::this_thread::sleep_for(std::chrono::milliseconds(1000 / fps_));
     } else {
-        // Stop(); // 导致死锁
-        SetRunning(false);
+        // Stop();              // 导致死锁
+        // SetRunning(false);   // 退出线程
+        Close();
     }
     return true;
 }
 
-void VideoDecoder::Cleanup() {
-    cap_.release();
+
+bool VideoDecoder::Open(const std::string& video_file) {
+    file_ = video_file;
+
+    if (!cap_.open(file_)) {
+        LOGE("Open %s failed..", file_.c_str());
+        return false;
+    }
+
+    double width = cap_.get(cv::CAP_PROP_FRAME_WIDTH);
+    double height = cap_.get(cv::CAP_PROP_FRAME_HEIGHT);
+    double fps = cap_.get(cv::CAP_PROP_FPS);
+
+    /*
+        cv::CAP_PROP_FRAME_WIDTH	视频帧宽度（像素）
+        cv::CAP_PROP_FRAME_HEIGHT	视频帧高度（像素）
+        cv::CAP_PROP_FPS	帧率（frames per second）
+        cv::CAP_PROP_FRAME_COUNT	总帧数
+        cv::CAP_PROP_FORMAT	像素格式（如 CV_8UC3）
+    */
+
+    if (width > 0 && height > 0) {
+        width_ = static_cast<int>(width);
+        height_ = static_cast<int>(height);
+        fps_ = static_cast<int>(fps);
+        // std::cout << "Resolution: " << width_ << "x" << height_ << std::endl;
+
+    }
+
+    LOGI("Open %s file: Resolution:[%d, %d], fps: %d", file_.c_str(), width_, height_, fps_);
+    is_pause_ = false;
+    return true;
 }
+
+void VideoDecoder::Close() {
+    cap_.release();
+
+    frame_id_ = 0;
+    width_ = 0;
+    height_ = 0;
+    fps_ = 0;
+
+    is_pause_ = true;
+
+    LOGI("Close %s file..", file_.c_str());
+}
+

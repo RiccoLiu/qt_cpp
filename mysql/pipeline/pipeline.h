@@ -1,52 +1,40 @@
-#ifndef PIPELINE_H
-#define PIPELINE_H
 
-#include <map>
-#include <string>
-#include <list>
-#include <memory>
+#ifndef PIPELINE2_PIPELINE_H
+#define PIPELINE2_PIPELINE_H
 
+#include <logger2.h>
 #include "pipeline_node.h"
-#include "pipeline_sys_msg.h"
+#include "pipeline_node_factory.h"
+#include <memory>
+#include <vector>
+#include <string>
 
-/**
- * Pipeline: framework for data process module.
- */
-class Pipeline  {
+class Pipeline {
 public:
-    Pipeline(const std::string &name);
+    Pipeline(std::shared_ptr<PipelineNodeFactory> factory)
+        : factory_(factory) {}
     virtual ~Pipeline() {}
 
-    const std::string &GetName() {
-        return name_;
-    }
+    void LoadYAML(const std::string& yaml_file);
+    void Start();
+    void Stop();
 
-    std::shared_ptr<PipelineNode> GetNode(const std::string &name) {
-        std::map<std::string, std::shared_ptr<PipelineNode>>::iterator i = nodes_.find(name);
-        if (i != nodes_.end()) {
-            return i->second;
+    std::shared_ptr<PipelineNode> GetNode(const std::string& name) {
+        std::shared_ptr<PipelineNode> node = nullptr;
+        for (auto it : nodes_) {
+            LOGI("name = %s, it->GetNodeName = %s", name.c_str(), it->GetNodeName().c_str());
+            if (it->GetNodeName() == name) {
+                node = it;
+                break;
+            }
         }
-        return nullptr;
+        return node;
     }
-
-    bool LoadYAML(YAML::Node &config);
-
-    bool Start();
-    bool Stop();
-    bool Main();  ///< switch to main thread loop
-    void test();
 
 private:
-    std::string name_;
-
-    std::map<std::string, std::shared_ptr<PipelineNode>> nodes_;
-    std::list<std::shared_ptr<PipelineNode>> startup_nodes_;
-
-    std::shared_ptr<PipelineThread> main_thread_;
-    std::shared_ptr<PipelineMsgQueue<PipelineSysMsg>> msg_queue_;
-
-    DISALLOW_COPY_AND_ASSIGN(Pipeline);
+    std::shared_ptr<PipelineNodeFactory> factory_;
+    std::vector<std::shared_ptr<PipelineNode>> nodes_;
 };
 
+#endif // PIPELINE2_PIPELINE_H
 
-#endif // PIPELINE_H

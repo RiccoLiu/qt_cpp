@@ -1,11 +1,13 @@
 
 #include <QThread>
 #include <QFileDialog>
+#include <QMessageBox>
 
+#include <logger2.h>
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "utils.h"
-
+#include "process/process_factory.h"
+#include "process/video_displayer.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -15,22 +17,6 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    decoder = new VideoDecoder();
-    detector = new FaceDetector();
-
-    decoderThread = new QThread(this);
-    detectorThread = new QThread(this);
-
-    decoder->moveToThread(decoderThread);
-    detector->moveToThread(detectorThread);
-
-    connect(decoder, &VideoDecoder::frameDecoded, detector, &FaceDetector::detect);
-    connect(detector, &FaceDetector::detectionResult, this, &MainWindow::onDetectionResult);
-    connect(decoder, &VideoDecoder::finished, this, &MainWindow::onPipelineFinished);
-
-    decoderThread->start();
-    detectorThread->start();
-
     // 显示控件
     displayer = new QLabel(this);
     setCentralWidget(displayer);
@@ -38,37 +24,30 @@ MainWindow::MainWindow(QWidget *parent)
     displayer->setScaledContents(true);             // 自动缩放到控件大小
     displayer->setAlignment(Qt::AlignCenter);       // 居中显示
     displayer->setBackgroundRole(QPalette::Dark);   // 可选：深色背景
+
+    pipeline = std::make_shared<Pipeline>(std::make_shared<ProcessFactory>());
+    pipeline->LoadYAML("pipeline.yaml");
+    decoder = std::dynamic_pointer_cast<VideoDecoder>(pipeline->GetNode(VideoDecoder::NodeName()));
+
+    auto video_disp = std::dynamic_pointer_cast<VideoDisplayer>(pipeline->GetNode(VideoDisplayer::NodeName()));
+    connect(video_disp.get(), &VideoDisplayer::Display, this, &MainWindow::DisplayImg, Qt::QueuedConnection);
+
+    pipeline->Start();
 }
 
 MainWindow::~MainWindow()
 {
-    QMetaObject::invokeMethod(decoder, "stop");
-
-    decoderThread->quit();
-    detectorThread->quit();
-    decoderThread->wait();
-    detectorThread->wait();
-
-    delete decoder;
-    delete detector;
-
+    pipeline->Stop();
     delete ui;
+}
+
+void MainWindow::DisplayImg(const QImage& img) {
+    displayer->setPixmap(QPixmap::fromImage(img));
 }
 
 void MainWindow::on_manerge_triggered()
 {
     managementWindow->show();
-}
-
-void MainWindow::onDetectionResult(const cv::Mat& result) {
-    QImage img = Utils::cvMatToQImage(result);
-    if (!img.isNull()) {
-        displayer->setPixmap(QPixmap::fromImage(img));
-    }
-}
-
-void MainWindow::onPipelineFinished() {
-    qDebug() << "Pipeline finished.";
 }
 
 void MainWindow::on_open_triggered()
@@ -82,8 +61,24 @@ void MainWindow::on_open_triggered()
 
     QFileInfo fileInfo(file);
     if (fileInfo.exists() && fileInfo.isFile()) {
-        QMetaObject::invokeMethod(decoder, "startDecoding", Qt::QueuedConnection, Q_ARG(QString, file));
-
         filePath = fileInfo.path();
+
+        if (decoder->Open(file.toStdString()) ) {
+            QMessageBox::information(this, "提示", QString("加载 %1 成功").arg(file));
+        } else {
+            QMessageBox::warning(this, "警告", QString("加载 %1 失败").arg(file));
+        }
+    }
+}
+
+void MainWindow::on_close_triggered() {
+    decoder->Close();
+}
+
+void MainWindow::on_play_triggered() {
+    if (decoder->IsPause()) {
+        decoder->SetPause(false);
+    } else {
+        decoder->SetPause(true);
     }
 }

@@ -1,30 +1,34 @@
-#ifndef FACE_DETECTOR_H
-#define FACE_DETECTOR_H
+#ifndef PIPELINE2_TEST_FACE_DETECTOR_H
+#define PIPELINE2_TEST_FACE_DETECTOR_H
 
-#include "pipeline_node.h"
 #include <opencv2/opencv.hpp>
+
+#include "pipeline_node.h""
 
 class FaceDetector final : public PipelineNode {
 public:
-    FaceDetector(const std::string& name);
+    FaceDetector(const std::string& instance_name);
     virtual ~FaceDetector();
 
-    virtual void InitializeThreadOnce() override;
-    virtual void UninitializeThreadOnce() override;
+    virtual bool LoadYAML(const YAML::Node& profile_cfg) override;
+    virtual bool Initialize() override;
+    virtual bool Process() override {
+        return false;
+    }
+    virtual bool ProcessMsg(MsgPtr msg) override;
+    virtual void Cleanup() override;
 
-    virtual bool LoadSubYaml(YAML::Node &config) override;
-    virtual bool processMsg(std::shared_ptr<PipelineMsg> &msg, std::shared_ptr<PipelineSink> &sink) override;
-
+    static std::string NodeName() {
+        return "FaceDetector";
+    }
+    virtual std::string GetNodeName() override {
+        return FaceDetector::NodeName();
+    }
 private:
-    cv::dnn::Net m_net;
+    cv::dnn::Net net_;
     std::string model_;
     std::string config_file_;
 
-    std::shared_ptr<PipelineSource> source_;
-
-    bool m_valid_marker = true;
 };
 
-std::shared_ptr<PipelineNode> CreateFaceDetector(const std::string& name);
-
-#endif // FACE_DETECTOR_H
+#endif // PIPELINE2_TEST_FACE_DETECTOR_H

@@ -48,6 +48,9 @@
    <attribute name="toolBarBreak">
     <bool>false</bool>
    </attribute>
+   <addaction name="open"/>
+   <addaction name="close"/>
+   <addaction name="play"/>
    <addaction name="manerge"/>
   </widget>
   <action name="manerge">
@@ -61,6 +64,28 @@
   <action name="open">
    <property name="text">
     <string>打开</string>
+   </property>
+  </action>
+  <action name="close">
+   <property name="text">
+    <string>关闭</string>
+   </property>
+   <property name="toolTip">
+    <string>关闭文件</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
+  <action name="play">
+   <property name="text">
+    <string>播放</string>
+   </property>
+   <property name="toolTip">
+    <string>播放/暂停</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
    </property>
   </action>
  </widget>

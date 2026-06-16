@@ -1,29 +1,40 @@
-#ifndef VIDEO_DECODER_H
-#define VIDEO_DECODER_H
+#ifndef PIPELINE2_TEST_VIDEO_DECODER_H
+#define PIPELINE2_TEST_VIDEO_DECODER_H
 
-#include "pipeline_node.h""
+#include "pipeline_node.h"
 
-class VideoDecoder final : public PipelineNode {
+#include <opencv2/opencv.hpp>
+
+class VideoDecoder : public PipelineNode {
 public:
-    VideoDecoder(const std::string& name);
-    virtual ~VideoDecoder();
+    VideoDecoder(const std::string& instance);
+    virtual ~VideoDecoder() {}
 
-    virtual void InitializeThreadOnce();
-    virtual void UninitializeThreadOnce();
+    virtual bool LoadYAML(const YAML::Node& profile_cfg) override;
+    virtual bool Initialize() override;
+    virtual bool Process() override;
+    virtual bool ProcessMsg(MsgPtr msg) override {
+        return false;
+    };
+    virtual void Cleanup() override;
 
-    virtual bool LoadSubYaml(YAML::Node &config);
-    virtual bool processMsg(std::shared_ptr<PipelineMsg> &msg, std::shared_ptr<PipelineSink> &sink);
 
-    int ThreadLoop();
+    static std::string NodeName() {
+        return "VideoDecoder";
+    }
+    virtual std::string GetNodeName() {
+        return VideoDecoder::NodeName();
+    }
 
 private:
-    std::string file_;
+    int frame_id_;
+
+    int width_;
+    int height_;
     int fps_;
 
-    bool running_;
-    std::thread thread_;
+    std::string file_;
+    cv::VideoCapture cap_;
 };
 
-std::shared_ptr<PipelineNode> OpenCVDecoderCreator(const std::string& name);
-
-#endif // VIDEO_DECODER_H
+#endif // PIPELINE2_TEST_VIDEO_DECODER_H

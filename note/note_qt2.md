@@ -236,3 +236,12 @@ id->setValidator(new QRegularExpressionValidator(regExp, this));
 
 ## UI操作耗时长会卡UI显示的问题
 
+
+
+# 部署 & 发布
+
+打包命令：
+
+```
+windeployqt6.exe mysql.exe
+```

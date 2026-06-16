@@ -3,7 +3,7 @@
 
 #include <QDialog>
 #include <QKeyEvent>
-#include "database2.h"
+#include "database.h"
 
 namespace Ui {
 class UserInfoDlg;

@@ -10,11 +10,11 @@ find_package(yaml-cpp REQUIRED)
 
 add_executable(pipeline_test
     main.cpp
-
-    opencv_frame.cpp opencv_frame.h
+    camera_msg.h camera_msg.cpp
     video_decoder.cpp video_decoder.h
-    opencv_display.cpp opencv_display.h
-    face_detector.cpp face_detector.h
+    node_factory.h node_factory.cpp
+    opencv_display.h opencv_display.cpp
+    face_detector.h face_detector.cpp
 )
 
 target_link_libraries(pipeline_test
@@ -22,5 +22,6 @@ target_link_libraries(pipeline_test
     logger2
     pipeline
     yaml-cpp
+    utils
 )
 

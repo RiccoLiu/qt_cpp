@@ -2,11 +2,12 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <pipeline.h>
+
 #include "usermanager_window.h"
 #include "management_window.h"
+#include "process/video_decoder.h"
 
-#include "videodecoder.h"
-#include "facedetector.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -23,24 +24,22 @@ public:
     ~MainWindow();
 
 private slots:
+    void DisplayImg(const QImage& img);
+
     void on_manerge_triggered();
-
-    // void onNewFrame(const cv::Mat& frame);
-    void onDetectionResult(const cv::Mat& result);
-    void onPipelineFinished();
-
     void on_open_triggered();
+    void on_close_triggered();
+    void on_play_triggered();
 
 private:
     Ui::MainWindow *ui;
-    QThread* decoderThread;
-    QThread* detectorThread;
-    VideoDecoder* decoder;
-    FaceDetector* detector;
 
     QLabel* displayer;
     QString filePath;
 
     ManagementWindow* managementWindow;
+
+    std::shared_ptr<Pipeline> pipeline;
+    std::shared_ptr<VideoDecoder> decoder;
 };
 #endif // MAINWINDOW_H

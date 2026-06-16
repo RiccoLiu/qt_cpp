@@ -1,32 +1,35 @@
-#ifndef OPENCV_DISPLAY_H
-#define OPENCV_DISPLAY_H
+#ifndef PIEPELINE2_TEST_OPENCV_DISPLAY_H
+#define PIEPELINE2_TEST_OPENCV_DISPLAY_H
+
 
 #include <opencv2/opencv.hpp>
-#include <memory>
+
 #include "pipeline_node.h"
 
-class OpenCVDisplay final : public PipelineNode
-{
+class OpencvDisplay final : public PipelineNode {
 public:
-    OpenCVDisplay(const std::string& name);
-    virtual ~OpenCVDisplay(){}
+    OpencvDisplay(const std::string& instance_name);
+    virtual ~OpencvDisplay();
 
-    virtual void InitializeThreadOnce();
-    virtual void UninitializeThreadOnce();
+    virtual bool LoadYAML(const YAML::Node& profile_cfg) override;
+    virtual bool Initialize() override;
+    virtual bool Process() override {
+        return false;
+    }
+    virtual bool ProcessMsg(MsgPtr msg) override;
+    virtual void Cleanup() override;
 
-protected:
-    virtual bool LoadSubYaml(YAML::Node& config);
-    virtual bool processMsg(std::shared_ptr<PipelineMsg>& msg,std::shared_ptr<PipelineSink>& sink);
+    static std::string NodeName() {
+        return "OpencvDisplay";
+    }
+    virtual std::string GetNodeName() {
+        return OpencvDisplay::NodeName();
+    }
 
 private:
     std::string win_name_;
-
-    DISALLOW_COPY_AND_ASSIGN(OpenCVDisplay);
+    int fps_;
+    float win_scale_;
 };
 
-/**
- * OpenCVDisplay Creator
- */
-std::shared_ptr<PipelineNode> OpenCVDisplayCreator(const std::string& name);
-
-#endif // OPENCV_DISPLAY_H
+#endif // PIEPELINE2_TEST_OPENCV_DISPLAY_H

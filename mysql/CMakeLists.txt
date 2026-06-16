@@ -15,18 +15,24 @@ qt_add_executable(mysql
     usermanager_window.h usermanager_window.cpp usermanager_window.ui
     userinfo_dlg.h userinfo_dlg.cpp userinfo_dlg.ui
     management_window.h management_window.cpp management_window.ui
-    videodecoder.h videodecoder.cpp
-    facedetector.h facedetector.cpp
-    utils.h
+    process/video_decoder.h
+    process/video_decoder.cpp
+    process/camera_msg.h
+    process/camera_msg.cpp
+    process/video_displayer.h
+    process/video_displayer.cpp
+    process/process_factory.h
+    process/process_factory.cpp
 )
 
 target_link_libraries(mysql
 PRIVATE
     Qt::Core
     Qt::Widgets
-    # database
     logger2
-    database2
+    database
+    pipeline
+    utils
     ${OpenCV_LIBS}
 )
 
@@ -45,10 +51,8 @@ qt_generate_deploy_app_script(
 )
 install(SCRIPT ${deploy_script})
 
-# add_subdirectory(logger)
 add_subdirectory(logger2)
 add_subdirectory(utils)
 add_subdirectory(test)
-add_subdirectory(database2)
+add_subdirectory(database)
 add_subdirectory(pipeline)
-add_subdirectory(pipeline2)

@@ -1,74 +1,96 @@
-#include <iostream>
+
+#include <chrono>
+#include <thread>
 #include <logger2.h>
 
 #include "pipeline_node.h"
-#include "pipeline_thread.h"
-#include "source.h"
 
-/**
- * Functions Implement Section
- */
+PipelineNode::PipelineNode(bool is_source, const std::string& instance_name)
+    : instance_name_(instance_name), is_source_(is_source), queue_max_size_(5) {}
 
-bool PipelineNode::LoadYAML(YAML::Node &config) {
-    std::shared_ptr<PipelineNode> spthis = shared_from_this();
-    std::weak_ptr<PipelineNode> wpthis = shared_from_this();
+PipelineNode::~PipelineNode() { Stop(); }
 
-    YAML::Emitter out;
-    out << config;
-    LOGD("Node YAML: \n%s", out.c_str());
-
-    std::string name = "main";
-    YAML::Node thread = config["thread"];
-    if (thread)
-        name = thread.as<std::string>();
-    mThread = PipelineThreadManager::GetInstance().GetThread(name);
-
-    YAML::Node sources = config["Sources"];
-    for (std::size_t i = 0; i < sources.size(); i++) {
-        name = sources[i].as<std::string>();
-        sources_[name] = std::make_shared<PipelineSource>(spthis, name);
+bool PipelineNode::LoadYAML(const YAML::Node& profile_cfg) {
+    if (profile_cfg.IsNull()) {
+        return false;
     }
-
-    YAML::Node sinks = config["Sinks"];
-    for (std::size_t i = 0; i < sinks.size(); i++) {
-        name = sinks[i].as<std::string>();
-        sinks_[name] = std::make_shared<PipelineSink>(wpthis, name);
+    for (const auto& topic : profile_cfg["publish"]) {
+        std::string topic_name = topic.as<std::string>();
+        publish_topic_.push_back(topic_name);
     }
-
-    YAML::Node subconfig = config["private"];
-    if (subconfig.Type() == YAML::NodeType::Scalar) {
-        std::string path = subconfig.as<std::string>();
-        subconfig = YAML::LoadFile(path);
+    for (const auto& topic : profile_cfg["subscribe"]) {
+        std::string topic_name = topic.as<std::string>();
+        Subscribe(topic_name);
+        subscribe_topic_.push_back(topic_name);
     }
-    return LoadSubYaml(subconfig);
+    return true;
 }
 
-// 线程局部清理器
-class ThreadLocalCleanup {
-public:
-    ~ThreadLocalCleanup() {
-        std::cout << "Thread cleanup: calling UninitializeThreadOnce for "
-                  << nodes_.size() << " nodes\n";
-        for (auto& node : nodes_) {
-            if (node) {
-                node->UninitializeThreadOnce();
+void PipelineNode::Start() {
+    running_ = true;
+    worker_thread_ = std::thread(&PipelineNode::ThreadLoop, this);
+}
+
+void PipelineNode::Stop() {
+    running_ = false;
+    if (worker_thread_.joinable()) {
+        worker_thread_.join();
+    }
+}
+
+void PipelineNode::Subscribe(const std::string& topic) {
+    MessageBroker::GetInstance().Subscribe(topic, [this](MsgPtr msg) -> int {
+        return this->PushMsg(msg);
+    });
+}
+
+void PipelineNode::Publish(const std::string& topic, MsgPtr msg) {
+    MessageBroker::GetInstance().Publish(topic, msg);
+}
+
+void PipelineNode::Publish(MsgPtr msg) {
+    for (const auto& topic : publish_topic_) {
+        Publish(topic, msg);
+    }
+}
+
+int PipelineNode::PushMsg(MsgPtr msg) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (queue_.size() > queue_max_size_) {
+        LOGW("--- %s drop a msg, queue size = %lu", GetNodeName().c_str(), queue_.size());
+        queue_.pop();
+    }
+    queue_.push(msg);
+    if (!queue_.empty()) {
+        condition_.notify_one();
+    }
+    return queue_.size();
+}
+
+MsgPtr PipelineNode::PopMsg() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (queue_.empty()) {
+        auto status = condition_.wait_for(lock, std::chrono::milliseconds(30));
+        if (status == std::cv_status::timeout) {
+            return nullptr;
+        }
+    }
+    auto msg = queue_.front();
+    queue_.pop();
+    return msg;
+}
+
+void PipelineNode::ThreadLoop() {
+    Initialize();
+    while (running_) {
+        if (is_source_) {
+            Process();
+        } else {
+            MsgPtr msg = PopMsg();
+            if (msg) {
+                ProcessMsg(msg);
             }
         }
     }
-
-    void add(std::shared_ptr<PipelineNode> node) {
-        nodes_.push_back(std::move(node));
-    }
-
-private:
-    std::list<std::shared_ptr<PipelineNode>> nodes_;
-};
-
-// 每个线程独立的清理器实例
-thread_local static ThreadLocalCleanup g_thread_cleanup;
-
-void PipelineNode::registerThreadCleanup() {
-    auto thisnode = PipelineNode::shared_from_this();
-    g_thread_cleanup.add(thisnode);
+    Cleanup();
 }
-
