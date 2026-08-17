@@ -89,24 +89,6 @@ setWindowFlags(windowFlags() & ~Qt::WindowMinMaxButtonsHint);
 setFixedSize(size());
 ```
 
-## 编辑框只能输入数字
-
-```
-// 1. 只能输入整数，前导0会被删掉
-QIntValidator* validator = new QIntValidator(0, 100, line_edit_); // 只能输入0-100数据
-line_edit_->setValidator(validator);
-
-// 2. 只能输入小数，前导0会被删掉
-QDoubleValidator* validator = new QDoubleValidator(-999.99, 999.99, 2, this); // 允许输入 -999.99 ~ 999.99，最多 2 位小数
-validator->setNotation(QDoubleValidator::StandardNotation); // 避免科学计数法
-score->setValidator(validator);
-
-// 3. 使用正则表达式，不会删除前导0
-QRegularExpression regExp("^[0-9]*$"); // 只允许数字，可为空
-id->setValidator(new QRegularExpressionValidator(regExp, this));
-
-```
-
 # QT 基础
 
 ## 创建 QT 工程
@@ -120,6 +102,59 @@ id->setValidator(new QRegularExpressionValidator(regExp, this));
 | 是否支持模态  | ❌       | ✅       | ❌           |
 | 典型用途    | 普通窗口    | 弹窗      | 主界面         |
 
+## Q_PROPERTY  & Q_OBJECT
+
+```
+Q_PROPERTY(QString text         // 声明 QString text 变量
+            READ text           // 读取函数（必须存在）
+            WRITE setText       // 写入函数（可选，省略则为只读）
+            NOTIFY textChanged  // 变更信号（可选，QML绑定时强烈建议加）
+            MEMBER m_text       // 替代 READ/WRITE：直接绑定成员变量（简单场景可用）
+            CONSTANT            // 标记为常量，无 WRITE 无 NOTIFY
+            FINAL               // 禁止子类覆盖此属性
+        )
+```
+
+```
+class MyLabel : public QObject
+{
+    Q_OBJECT
+    // ✅ 声明属性
+    Q_PROPERTY(QString text READ text WRITE setText NOTIFY textChanged)
+
+public:
+    explicit MyLabel(QObject *parent = nullptr);
+
+    // READ 函数
+    QString text() const;
+
+    // WRITE 函数
+    void setText(const QString &newText) {
+        if (m_text == newText)
+            return;
+
+        m_text = newText;
+        emit textChanged(m_text);
+    }
+
+signals:
+    // NOTIFY 信号（参数类型应与属性类型一致）
+    void textChanged(const QString &text);
+
+private:
+    QString m_text;  // 实际存储的成员变量
+};
+```
+
+C++ 中动态访问(反射)
+
+```
+MyLabel label;
+
+// 通过字符串名称读写属性
+label.setProperty("text", "动态设置的文本");
+QString val = label.property("text").toString();
+```
 
 ## 内存管理
 
@@ -344,7 +379,7 @@ connect(thread, &QThread::started, worker, &Worker::process);
 | QComboBox / QFontComboBox | 组合框(下拉列表) |
 | QLineEdit | 单行文本编辑 |
 | QTextEdit | 多行文本编辑 |
-| QCheckBox | 复选框 |
+| QCheckBox | 复选框(打开 or 关闭) |
 | QTableWidget | 表格 |
 | QRadioButton | 单选按钮 |
 | QListWidget | 列表 |
@@ -457,44 +492,315 @@ if (!textEdit->toPlainText().trimmed().isEmpty()) { ... }
 
 - void checkStateChanged(Qt::CheckState): 复选框状态变更时会触发此消息
 
-# QSS 样式
-
-## 常用样式属性
-
-| 属性 | 作用 | 示例 |
-|-------|------|------|
-| background-color | 背景色 | background-color: #f0f0f0ff; |
-| color | 文字颜色 | color: red; |
-| border | 边框（宽度+样式+颜色） | border: 2px solid #ccc; |
-| border-radius | 圆角 | border-radius: 8px; |
-| font-size | 字体大小 | font-size: 16px; |
-| font-family | 字体 | font-family: "Microsoft YaHei"; |
-| padding | 内边距 | padding: 10px; |
-| margin | 外边距（部分控件支持） | margin: 5px; |
-
-## 子控件属性
-
-## 伪状态
+## 树形图: QTreeView + QStandardItemModel (标准模型) / QTreeWidget
 
 ```
-button->setStyleSheet(R"(
-    QPushButton {
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        padding: 8px;
+void MainWindow::CreateDeviceView() {
+    // 创建模型和视图
+    device_list_model_ = new QStandardItemModel(device_view_);
+    device_list_ = new QTreeView(device_view_);
+    device_list_->setModel(device_list_model_);
+    device_list_->setHeaderHidden(true);
+
+    device_info_model_ = new QStandardItemModel(device_view_);
+    // device_info_model_->setColumnCount(2);
+    // device_info_model_->setHorizontalHeaderLabels({"Property", "Value"});
+    device_info_ = new QTreeView(device_view_);
+    device_info_->setModel(device_info_model_);
+    device_info_->setHeaderHidden(true);
+
+    // 创建布局
+    QVBoxLayout* layout = new QVBoxLayout(device_view_);
+    layout->addWidget(toolbar);
+    layout->addWidget(device_list_);
+    layout->addWidget(device_info_);
+    layout->setContentsMargins(0, 0, 0, 0); // 移除边距
+    layout->setSpacing(0);                  // 移除间距
+
+    // 设置 QTreeView 的 sizePolicy，使其可以拉伸
+    device_list_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+
+    // 信号槽
+    connect(device_list_->selectionModel(), &QItemSelectionModel::currentChanged, this, &MainWindow::OnDeviceSelected);
+}
+
+// 模型中导入数据
+void MainWindow::PopulateDeviceList() {
+    device_list_model_->clear(); // 清空旧数据
+
+    auto devices = EnumerateDevices();
+    for (const auto& dev : devices) {
+        QStandardItem* item = new QStandardItem(dev.name);
+        item->setEditable(false);
+        item->setData(QVariant::fromValue(dev), Qt::UserRole); // 关键：保存完整设备信息
+        device_list_model_->appendRow(item);
     }
-    QPushButton:hover {
-        background-color: #45a049;  /* 鼠标悬停 */
+
+    device_list_->expandAll();
+}
+
+// 信号槽函数中取出数据显示
+void MainWindow::OnDeviceSelected(const QModelIndex& current, const QModelIndex& previous) {
+    Q_UNUSED(previous);
+
+    device_info_model_->clear();
+    device_info_model_->setColumnCount(2);
+
+    if (!current.isValid())
+        return;
+
+    // 从模型项中取出设备信息
+    QStandardItem* item = device_list_model_->itemFromIndex(current);
+    if (!item)
+        return;
+
+    QVariant data = item->data(Qt::UserRole);
+    if (!data.canConvert<Device*>())
+        return;
+
+    Device* dev = data.value<Device*>();
+
+    QStandardItem* interface_info = new QStandardItem("Interface Info");
+    const QMap<QString, QString>& props = dev->GetProperty();
+    for (auto it = props.cbegin(); it != props.cend(); ++it) {
+        interface_info->appendRow( { new QStandardItem(it.key()) ,  new QStandardItem(it.value())} );
     }
-    QPushButton:pressed {
-        background-color: #3e8e41;  /* 按下时 */
+    device_info_model_->appendRow(interface_info);
+
+    // 展开并调整列宽
+    device_info_->expandAll();
+    device_info_->resizeColumnToContents(0);
+    device_info_->resizeColumnToContents(1);
+}
+
+```
+
+## 树形图 QTreeWidget
+```
+void FeatureTreeWidget::SetupUi()  {
+    ...
+    // 2.树形图
+    // 2.1. 创建树形图
+    feature_tree_ = new QTreeWidget(this);
+    // feature_tree->setHeaderLabels({"Feature", ""}); // 第二列放控件
+    feature_tree_->setHeaderHidden(true);
+    feature_tree_->setColumnCount(2);
+
+    feature_tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);  // 第一列自适应
+    feature_tree_->header()->setSectionResizeMode(1, QHeaderView::Fixed);    // 第二列固定宽度
+    feature_tree_->header()->resizeSection(1, 120);                          // 第二列列宽 120
+    feature_tree_->header()->setStretchLastSection(true);                    // 最后一列自动拉伸
+    feature_tree_->setAlternatingRowColors(false);                           // 斑马纹
+
+    // 2.2. 获取所有 Feature,添加叶子节点
+    FeatureWidgetFactory factory(feature_tree_);
+    feature_manager_ = FeatureManager::CreateFeatureManager();
+    for (FeatureControl* feature_control : feature_manager_->GetFeatureControl()) {
+        QTreeWidgetItem* control_item = new QTreeWidgetItem(feature_tree_, {feature_control->GetName()});
+        control_item->setData(0, Qt::UserRole, QVariant::fromValue(feature_control));
+        control_item->setExpanded(true);
+        control_item->setFirstColumnSpanned(true);
+
+        for (Feature* feature : feature_control->GetFeature()) {
+            QTreeWidgetItem* feature_item = new QTreeWidgetItem(control_item, {feature->GetName()});
+            feature_item->setData(0, Qt::UserRole, QVariant::fromValue(feature));
+            QWidget* feature_widget = factory.CreateFeatureWidget(*feature);
+            if (feature_widget) {
+                feature_tree_->setItemWidget(feature_item, 1, feature_widget);
+            }
+        }
     }
-    QPushButton:disabled {
-        background-color: #cccccc;  /* 禁用状态 */
-        color: #666666;
+
+    connect(feature_tree_, &QTreeWidget::currentItemChanged, this, &FeatureTreeWidget::OnFeatureSelected);
+    ...
+}
+
+// 叶子节点取数据，可视化
+void FeatureTreeWidget::OnFeatureSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous) {
+    Q_UNUSED(previous);
+
+    QVariant data = current->data(0, Qt::UserRole);
+
+    FeatureBase* feature_base = nullptr;
+    if (data.canConvert<Feature*>()) {
+        feature_base  = data.value<Feature*>();
     }
-)");
+    if (data.canConvert<FeatureControl*>()) {
+        feature_base = data.value<FeatureControl*>();
+    }
+    if (!feature_base) {
+        qDebug() <<  "get feature base failed..";
+        return;
+    }
+    feature_info_->setText(feature_base->GetString());
+}
+
+// 查找叶子节点
+void FeatureTreeWidget::OnSearch() {
+    QString keyword = search_edit_->text().trimmed();
+    if (keyword.isEmpty()) {
+        return;
+    }
+
+    QList<QTreeWidgetItem*> items = feature_tree_->findItems(keyword, Qt::MatchContains | Qt::MatchRecursive, 0);
+    if (items.isEmpty()) {
+        QMessageBox::information(this, "查找结果", "未找到匹配项。");
+    } else {
+        QTreeWidgetItem* first = items.first();
+        feature_tree_->setCurrentItem(first);
+        feature_tree_->scrollToItem(first, QAbstractItemView::PositionAtCenter);
+        feature_tree_->setFocus();
+    }
+}
+
+```
+
+
+## 手绘控件
+
+```
+CircleButton2::CircleButton2(const QString& text, QWidget *parent)
+    : QWidget{parent}
+    , m_text(text)
+    , m_hoverFactor(0.0)
+    , m_isPressed(false)
+    , m_hoverAnim(nullptr)
+{
+    setFixedSize(QSize(80, 80));
+    setMouseTracking(true);
+
+    setFocusPolicy(Qt::StrongFocus); // 可以获得焦点： 可以点击 / 可以使用TAB切换到控件
+
+    m_hoverAnim = new QPropertyAnimation(this, "hoverFactor", this);
+    m_hoverAnim->setDuration(2000);
+    m_hoverAnim->setEasingCurve(QEasingCurve::InOutQuad); // 平滑加减速
+}
+
+class CircleButton2 : public QWidget
+{
+    Q_OBJECT
+
+    Q_PROPERTY(QString text READ text WRITE setText NOTIFY textChanged)
+    
+    // 外部通过运行时反射机制修改变量，0.0=Normal, 1.0=Hovered 的连续插值因子
+    Q_PROPERTY(qreal hoverFactor READ hoverFactor WRITE setHoverFactor)
+
+public:
+    explicit CircleButton2(const QString& text = "", QWidget *parent = nullptr);
+
+    QString text() const { return m_text; }
+    void setText(const QString& text);
+
+    qreal hoverFactor() const { return m_hoverFactor; }
+    void setHoverFactor(qreal factor); // setter 中触发 update()
+
+signals:
+    void clicked();
+    void textChanged(const QString &text);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    void enterEvent(QEnterEvent *event) override;
+    void leaveEvent(QEvent *event) override;
+
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+
+    void changeEvent(QEvent *) override;
+};
+
+```
+
+# Qt 动画框架
+
+## QPropertyAnimation 
+
+在指定时间内，对 QObject 的某个 Q_PROPERTY 属性进行平滑插值。它不直接操作 UI，它只负责“按时间线修改一个数值”，UI 的变化是这个数值变化后触发重绘的自然结果。
+
+运行时流程：
+
+0. QPropertyAnimation 初始化时，绑定指定的属性
+1. start() → 动画引擎注册到全局时间轴
+2. 每帧（通常 16ms/60FPS）：引擎根据 easing curve 计算当前插值
+3. 调用属性的 WRITE 函数（如 setHoverFactor(0.35)）
+4. 属性的 setter 中调用 update() → 触发重绘
+5. 到达终点 → 停止，发出 finished() 信号
+
+缓动曲线效果: 
+
+| 类别 | 推荐曲线 | 适用场景 | 视觉感受 |
+| :--- | :--- | :--- | :--- |
+| 通用过渡 | `InOutQuad` / `InOutCubic` | Hover、展开收起、颜色渐变 | 自然平滑，最安全的选择 |
+| 进入/出现 | `OutBack` / `OutElastic` | 弹窗、元素入场 | 有过冲/回弹，活泼感 |
+| 退出/消失 | `InBack` / `InQuad` | 关闭、隐藏 | 加速离开，干脆利落 |
+| 强调/提醒 | `OutBounce` | 错误提示、通知 | 弹跳效果，吸引注意力 |
+| 匀速 | `Linear` | 进度条、旋转加载 | 机械感，无加减速 |
+| 自定义 | `Custom` + `setCustomType()` | 品牌专属动效 | 完全控制贝塞尔控制点 |
+
+基本用法：
+
+```
+// 1. 基础配置
+auto *anim = new QPropertyAnimation(target, "propertyName", parent);
+
+anim->setDuration(300);              // 持续时间(ms)
+anim->setStartValue(0.0);            // 起始值（可选，省略则取当前属性值）
+anim->setEndValue(1.0);              // 结束值（必须设置）
+anim->setEasingCurve(QEasingCurve::InOutQuad); // 缓动曲线
+anim->setLoopCount(1);               // 循环次数，-1 为无限循环
+
+// 2. 控制方法:
+anim->start();                       // 开始（若已在运行，从头重启）
+anim->stop();                        // 立即停止，停在当前位置
+anim->pause();                       // 暂停
+anim->resume();                      // 恢复
+anim->setCurrentTime(150);           // 跳转到指定时间点（用于预览/调试）
+
+// 3. 信号
+connect(anim, &QPropertyAnimation::finished, [](){
+    qDebug() << "动画完成";
+});
+connect(anim, &QPropertyAnimation::valueChanged, [](const QVariant &val){
+    qDebug() << "当前值:" << val;  // 每帧触发，可用于调试
+});
+```
+
+进阶用法:
+
+```
+// 1. 组合多个动画
+// 1.1.顺序执行
+auto *seq = new QSequentialAnimationGroup(this);
+seq->addAnimation(moveAnim);
+seq->addAnimation(fadeAnim);
+seq->start();
+
+// 1.2.并行执行
+auto *par = new QParallelAnimationGroup(this);
+par->addAnimation(moveAnim);
+par->addAnimation(fadeAnim);
+par->start();
+
+// 1.3.嵌套：先并行移动+缩放，再淡出
+auto *outer = new QSequentialAnimationGroup(this);
+auto *inner = new QParallelAnimationGroup(outer);
+inner->addAnimation(moveAnim);
+inner->addAnimation(scaleAnim);
+outer->addAnimation(inner);
+outer->addAnimation(fadeAnim);
+
+// 2.设置关键帧
+anim->setKeyValueAt(0.0, 0.0);     // 起点
+anim->setKeyValueAt(0.3, 0.8);     // 30% 时间时值为 0.8（快速上升）
+anim->setKeyValueAt(0.7, 0.9);     // 70% 时间时值为 0.9（缓慢逼近）
+anim->setKeyValueAt(1.0, 1.0);     // 终点
+
+// 3. 自定义插值类型
+MyStruct myStructInterpolator(const MyStruct &from, const MyStruct &to, qreal progress) {
+    MyStruct result;
+    result.value = from.value + (to.value - from.value) * progress;
+    return result;
+}
 
 ```
 
@@ -587,103 +893,37 @@ MainWindow::MainWindow(QWidget *parent)
 }
 ```
 
-# QT 主窗口
+# 菜单栏 & 工具栏 & 状态栏
 
-## 菜单栏
-
-```
-
-class Ui_DFScanWindow
-{
-public:
-    QMenuBar *menubar;  // 菜单栏
-    QMenu *menuFile;    // 菜单栏-文件
-    QAction *open;      // 菜单栏-文件-打开
-}
-
-void setupUi(QMainWindow *DFScanWindow) {
-    open = new QAction(DFScanWindow);
-    open->setObjectName("open");
-
-    menubar = new QMenuBar(DFScanWindow);
-    menubar->setObjectName("menubar");
-    menubar->setGeometry(QRect(0, 0, 800, 24));
-    
-    menuFile = new QMenu(menubar);
-    menuFile->setObjectName("menuFile");
-
-    DFScanWindow->setMenuBar(menubar);
-
-    menubar->addAction(menuFile->menuAction());
-    menuFile->addAction(open);
-}
-
-void retranslateUi(QMainWindow *DFScanWindow) {
-    open->setText(QCoreApplication::translate("DFScanWindow", "\346\211\223\345\274\200", nullptr));
-    menuFile->setTitle(QCoreApplication::translate("DFScanWindow", "\346\226\207\344\273\266", nullptr));
-}
+## QMainWindow  菜单栏 & 工具栏 & 状态栏
 
 ```
+void MainWindow::setupUI() {
+    // 1. 菜单栏
+    QMenu* file = menuBar()->addMenu(tr("File"));
+    file->addAction(...);
 
-## 工具栏
+    // 2. 工具栏
+    QToolBar* toolbar = addToolBar(tr("Main"));
+    toolbar->addAction(...);
 
-```
-class Ui_DFScanWindow
-{
-public:
-    QToolBar *toolBar;  // 工具栏
-    QAction *startScan; // 工具栏-开始扫描
-}
+    // 3. 客户端设置布局
+    QWidget* central = new QWidget(this);
+    setCentralWidget(central);
 
+    QHBoxLayout* layout = new QHBoxLayout(central);
+    ....
+    central->setLayout(layout);
 
-void setupUi(QMainWindow *DFScanWindow) {
-    startScan = new QAction(DFScanWindow);
-    startScan->setObjectName("startScan");
-    QIcon icon1;
-    icon1.addFile(QString::fromUtf8(":/res/icon/start32.png"), QSize(), QIcon::Mode::Normal, QIcon::State::Off);
-    startScan->setIcon(icon1);
-    startScan->setMenuRole(QAction::MenuRole::NoRole);
+    // 4. 状态栏
+    statusBar()->showMessage(tr("Ready")， 2000); // 2s后消失
 
-    toolBar = new QToolBar(DFScanWindow);
-    toolBar->setObjectName("toolBar");
-    DFScanWindow->addToolBar(Qt::ToolBarArea::TopToolBarArea, toolBar);
-
-    toolBar->addAction(startScan);
-
-    startScan->setText(QCoreApplication::translate("DFScanWindow", "\345\274\200\345\247\213", nullptr));
-    startScan->setToolTip(QCoreApplication::translate("DFScanWindow", "\345\274\200\345\247\213\346\211\253\346\217\217", nullptr));
-}
-
-DFScanWindow::DFScanWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , ui(new Ui::DFScanWindow)
-{
-    ui->toolBar->setIconSize(QSize(32, 32)); // 设置图标大小
-}
-```
-
-## 状态栏
-
-```
-
-int MainWindow::ControlInitialize() {
-
-    // 8.1. 状态栏显示临时消息
-    statusBar()->showMessage("未登录");
-    // statusBar()->showMessage("未登录", 5000);  // 5秒后消失
-
-    // 8.2. 添加一个永久标签
-    status_label_ = new QLabel("状态栏标签");
-    status_label_->setFrameStyle(QFrame::Panel | QFrame::Sunken);
-    statusBar()->addPermanentWidget(status_label_);
-
-    status_label_->setText("状态栏标签:");
-
-    // 8.3 进度条
-    progressbar_ = new QProgressBar(this);
+    // 5. 进度条
+    QProgressBar* progressbar_ = new QProgressBar(this);
     progressbar_->setRange(0, 100);
     progressbar_->setValue(0);
-    statusBar()->addPermanentWidget(progressbar_);
+    statusBar()->addPermanentWidget(progressbar_);  // 状态栏右侧添加一个永久控件，它不会被showMessage的消息遮挡着
+    // addWidget(QWidget *widget)                   // 状态栏左侧添加一个控件，优先级低于临时消息
 
     connect(&process_timer_,&QTimer::timeout, this, [this] () {
         qDebug() << "process timer: timeout";
@@ -700,7 +940,247 @@ int MainWindow::ControlInitialize() {
     });
 
     process_timer_.start(1000); // 默认循环触发，每1s调用一次超时函数
+
 }
+
+```
+
+## QWidget 菜单栏 & 工具栏 & 状态栏
+
+```
+void ScannerWindow::setupUI() {
+    // 0. 行动项
+    QAction* save = new QAction(tr("Save"), this); // 菜单栏和工具栏共有的行动项
+
+    // 1. 菜单栏
+    QMenuBar* menubar = new QMenuBar(this);
+
+    QMenu* file = menubar->addMenu(tr("File"));
+    QAction* open = file->addAction(tr("Open"));
+    QMenu* openRecent = file->addMenu("Open Recent");
+    QAction* recentFile = openRecent->addAction(tr("/home/face.png"));
+    QAction* close = file->addAction(tr("Close"));
+    file->addAction(save);
+
+    QMenu* view = menubar->addMenu(tr("View"));
+    QMenu* dispMethod = view->addMenu(tr("Display Method"));
+    dispMethod->setEnabled(false);
+
+    // 2. 工具栏
+    QToolBar* toolbar = new QToolBar(tr("Scanner"), this);
+
+    QAction* startScan = toolbar->addAction(tr("Start Scan"));
+    QAction* stopScan = toolbar->addAction(tr("Stop Scan"));
+    toolbar->addAction(save);
+
+    connect(startScan, &QAction::triggered, this, &ScannerWindow::onStartScan);
+    connect(stopScan, &QAction::triggered, this, &ScannerWindow::onStopScan);
+    connect(save, &QAction::triggered, this, &ScannerWindow::onSave);
+
+    // 3. 状态栏
+    m_statusBar = new QStatusBar(this);
+    m_statusBar->showMessage(tr("Ready To Scan"));
+
+    QVBoxLayout* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0); // 移除边距
+    layout->setSpacing(0);                  // 移除间距
+    layout->addWidget(menubar);
+    layout->addWidget(toolbar);
+    layout->addWidget(m_scanner);
+    layout->addWidget(m_statusBar);
+    setLayout(layout);
+}
+```
+
+## 行动项 QAction 配置
+
+```
+void MainWindow::CreateActions() {
+    // 1. 设置图标、快捷键
+    open_act_ = new QAction(tr("&Open"), this);
+    open_act_->setIcon(QIcon::fromTheme("document-open"));   // 设置图标 QIcon(":/icons/refresh.png")
+    open_act_->setShortcut(QKeySequence::Open);              // 设置快捷键
+    save_act_->setEnabled(false);                           // 默认置灰
+
+    QAction* single_screen = screen_menu->addAction(tr("Single Screen"));
+    QAction* four_screen = screen_menu->addAction(tr("Four Screen"));
+    QAction* nine_screen = screen_menu->addAction(tr("Nine Screen"));
+
+    // 2. 下拉式菜单: QToolButton + QMenu
+    QToolButton* screen_layout_ = new QToolButton(this);
+    screen_layout_->setText(tr("Screen Layout"));
+    screen_layout_->setIcon(QIcon(":/png/screen_layout.png"));
+
+    // screen_layout_->setPopupMode(QToolButton::DelayedPopup);    // 短按执行动作、长按出现下拉菜单
+    // screen_layout_->setPopupMode(QToolButton::MenuButtonPopup); // 点击按钮执行动作、点击下拉按钮出现下拉菜单
+    screen_layout_->setPopupMode(QToolButton::InstantPopup);    // 点击开启下拉菜单
+
+    QMenu* screen_menu = new QMenu(tr("Screen Menu"), screen_layout_);
+    QAction* single_screen = screen_menu->addAction(tr("Single Screen"));
+    QAction* four_screen = screen_menu->addAction(tr("Four Screen"));
+    QAction* nine_screen = screen_menu->addAction(tr("Nine Screen"));
+
+    screen_layout_->setMenu(screen_menu);
+
+    // 3. 对勾单选： QActionGroup 实现 互斥 3选1
+    QActionGroup* screen_group = new QActionGroup(screen_menu);
+    screen_group->setExclusive(true);
+    screen_group->addAction(single_screen);
+    screen_group->addAction(four_screen);
+    screen_group->addAction(nine_screen);
+
+    single_screen->setCheckable(true);              // 开启选择框
+    four_screen->setCheckable(true);
+    nine_screen->setCheckable(true);
+    single_screen->setChecked(true);                // 勾选选择框
+}
+
+```
+
+# QEvent 事件
+
+## 常见的QT 事件
+
+```
+// 绘图事件
+void paintEvent(QPaintEvent *event) override;
+
+// 鼠标移动到控件事件, 触发一次消息，需要先设置: setMouseTracking(true)
+void enterEvent(QEnterEvent *event) override;
+
+// 鼠标移出控件事件, 触发一次消息，需要先设置: setMouseTracking(true)
+void leaveEvent(QEvent *event) override;
+
+// 鼠标按下事件
+void mousePressEvent(QMouseEvent *event) override;
+
+// 鼠标抬起事件
+void mouseReleaseEvent(QMouseEvent *event) override;
+
+// 按键按下事件
+void keyPressEvent(QKeyEvent *event) override;
+
+// 按键抬起事件
+void keyReleaseEvent(QKeyEvent *event) override;
+
+// 获得焦点事件
+void focusInEvent(QFocusEvent *event) override;
+
+// 失去焦点事件
+void focusOutEvent(QFocusEvent *event) override;
+
+// 
+void changeEvent(QEvent *) override;
+
+// 获取理想尺寸事件
+QSize sizeHint() const override;
+
+// 控件尺寸变化事件
+void resizeEvent(QResizeEvent *event) override;
+
+// 拖拽文件进入控件事件, 需要先设置: setAcceptDrops(true);
+void dragEnterEvent(QDragEnterEvent *event) override;
+    
+// 拖拽文件离开控件事件, 需要先设置: setAcceptDrops(true);
+void dragLeaveEvent(QDragLeaveEvent *event) override;
+
+// 拖拽文件在控件内放下事件，需要先设置: setAcceptDrops(true);
+void dropEvent(QDropEvent *event) override;
+
+// 鼠标进入控件事件, 连续触发消息， 需要先设置: setMouseTracking(true)
+void mouseMoveEvent(QMouseEvent *event) override;
+```
+
+## Qt事件的消息处理
+
+消息分发的顺序：
+
+```
+QCoreApplication::notify()
+    │
+    ├─ 1. 事件过滤器 (installEventFilter)     ← 最高优先级，可拦截一切
+    │
+    ├─ 2. 目标对象的 event() 函数             ← 虚函数，可按 type 分发
+    │
+    ├─ 3. 具体事件处理器 (mousePressEvent等)  ← 你最常重写的地方
+    │
+    └─ 4. 若未 accept → 向父级冒泡           ← 仅针对输入事件
+```
+
+事件过滤器：
+
+```
+// 在 MainWindow 中拦截所有子控件的鼠标按下
+MainWindow::MainWindow() {
+    ui->lineEdit->installEventFilter(this);
+    ui->pushButton->installEventFilter(this);
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+    if (event->type() == QEvent::MouseButtonPress) {
+        qDebug() << "拦截到鼠标按下:" << obj->objectName();
+        return true;  // ✅ 返回 true = 吞掉事件，不再传递给目标对象
+    }
+    return QObject::eventFilter(obj, event); // ❌ 返回 false = 放行
+}
+```
+
+> 为什么用事件过滤器而不是继承？ 
+> > 当你需要给一批第三方控件或动态创建的控件添加统一行为（如全局快捷键、日志记录、输入验证），而不想为每种控件写子类时，事件过滤器是唯一正解。
+
+## 事件与信号槽的选择
+
+| 维度 | 事件 | 信号槽 |
+| :--- | :--- | :--- |
+| 方向 | 自底向上冒泡（子→父） | 任意连接，无方向限制 |
+| 耦合度 | 紧耦合（必须知道目标类） | 松耦合（只需知道信号签名） |
+| 跨线程 | ❌ 不能跨线程投递 | ✅ 支持 QueuedConnection |
+| 返回值 | 可通过 accept/ignore 反馈 | 单向通知，无反馈 |
+| 典型用途 | 控件自身行为、父子交互 | 业务逻辑、模块间通信 |
+
+- 控件内部的视觉/交互反馈 → 事件
+- 控件向外部通知状态变化 → 信号
+- 父容器统一管理子控件行为 → 事件过滤器
+- 跨模块/跨线程通信 → 信号槽
+
+# QSS 样式
+
+## 样式属性
+
+| 属性 | 作用 | 示例 |
+|-------|------|------|
+| background-color | 背景色 | background-color: #f0f0f0ff; |
+| color | 文字颜色 | color: red; |
+| border | 边框（宽度+样式+颜色） | border: 2px solid #ccc; |
+| border-radius | 圆角 | border-radius: 8px; |
+| font-size | 字体大小 | font-size: 16px; |
+| font-family | 字体 | font-family: "Microsoft YaHei"; |
+| padding | 内边距 | padding: 10px; |
+| margin | 外边距（部分控件支持） | margin: 5px; |
+
+## 子控件属性
+
+## 伪状态
+
+```
+button->setStyleSheet(R"(
+    QPushButton {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        padding: 8px;
+    }
+    QPushButton:hover {
+        background-color: #45a049;  /* 鼠标悬停 */
+    }
+    QPushButton:pressed {
+        background-color: #3e8e41;  /* 按下时 */
+    }
+    QPushButton:disabled {
+        background-color: #cccccc;  /* 禁用状态 */
+        color: #666666;
+    }
+)");
 
 ```
 
@@ -804,5 +1284,58 @@ void CPicPreviewDlg::OnBnClickedButtonAutoflip()
 }
 ```
 
-# 试题
 
+# 附录
+
+QIcon QIcon::fromTheme(const QString &name, const QIcon &fallback) 
+
+
+```
+通用操作:
+document-new	新建文档
+document-open	打开
+document-save	保存
+document-save-as	另存为
+edit-copy	复制
+edit-cut	剪切
+edit-paste	粘贴
+edit-delete	删除
+edit-undo	撤销
+edit-redo	重做
+system-search	搜索
+view-refresh	刷新
+window-close	关闭窗口
+
+导航与视图:
+go-previous	上一页 / 后退
+go-next	下一页 / 前进
+go-up	上级目录
+go-home	主页 / 首页
+zoom-in	放大
+zoom-out	缩小
+zoom-fit-best	最佳缩放
+view-list-icons	图标视图
+view-list-details	详细列表
+
+网络与设备
+network-wired	有线网络
+network-wireless	无线网络
+network-connect	连接
+network-disconnect	断开连接
+media-playback-start	播放
+media-playback-pause	暂停
+media-playback-stop	停止
+media-seek-forward	快进
+media-seek-backward	快退
+
+应用于系统
+application-exit	退出应用
+help-about	关于
+preferences-system	系统设置
+system-run	运行
+dialog-ok	确定
+dialog-cancel	取消
+dialog-warning	警告
+dialog-error	错误
+
+```
