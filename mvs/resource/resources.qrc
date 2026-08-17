@@ -1,0 +1,13 @@
+<RCC>
+    <qresource prefix="/styles">
+        <file>styles.qss</file>
+    </qresource>
+    <qresource prefix="/fonts">
+        <file>Roboto-Regular.ttf</file>
+        <file>Font_Abbey_Dawn_by_loveinhoollywood.ttf</file>
+    </qresource>
+    <qresource prefix="/png">
+        <file>logo.bmp</file>
+        <file>t-17.jpg</file>
+    </qresource>
+</RCC>

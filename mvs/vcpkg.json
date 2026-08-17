@@ -1,0 +1,8 @@
+{
+  "name": "mvs",
+  "version": "1.0.0",
+  "description": "Project using official MySQL Connector/C++ and OpenCV with contrib/nonfree",
+  "dependencies": [
+    "opencv"
+  ]
+}
