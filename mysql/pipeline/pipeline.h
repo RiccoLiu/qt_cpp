@@ -22,7 +22,7 @@ public:
     std::shared_ptr<PipelineNode> GetNode(const std::string& name) {
         std::shared_ptr<PipelineNode> node = nullptr;
         for (auto it : nodes_) {
-            LOGI("name = %s, it->GetNodeName = %s", name.c_str(), it->GetNodeName().c_str());
+            // LOGI("name = %s, it->GetNodeName = %s", name.c_str(), it->GetNodeName().c_str());
             if (it->GetNodeName() == name) {
                 node = it;
                 break;

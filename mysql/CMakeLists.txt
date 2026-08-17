@@ -23,6 +23,7 @@ qt_add_executable(mysql
     process/video_displayer.cpp
     process/process_factory.h
     process/process_factory.cpp
+    resources.qrc
 )
 
 target_link_libraries(mysql
